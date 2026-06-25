@@ -1,0 +1,28 @@
+name: Reusable Dependabot
+
+on:
+  workflow_call:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  dependabot:
+    name: Dependabot Auto-Merge
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    steps:
+      - name: Fetch Dependabot Metadata
+        uses: dependabot/fetch-metadata@v3
+        id: metadata
+
+      - name: Approve and Enable Auto-Merge
+        if: steps.metadata.outputs.update-type != 'version-update:semver-major'
+        run: |
+          gh pr review --approve "$PR_URL" --body "Auto-approving Dependabot PR (minor/patch)."
+          gh pr merge --auto --rebase "$PR_URL"
+        env:
+          PR_URL: "${{ github.event.pull_request.html_url }}"
+          GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
