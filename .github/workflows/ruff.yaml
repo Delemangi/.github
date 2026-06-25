@@ -1,0 +1,45 @@
+name: Reusable Ruff
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        description: "Directory to run Ruff in"
+        type: string
+        default: "."
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ruff-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ruff:
+    name: Ruff
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install
+
+      - name: Run Ruff Linter
+        run: |
+          uv sync
+          uv run ruff check --output-format=github .
+
+      - name: Run Ruff Formatter
+        run: uv run ruff format --check --diff .

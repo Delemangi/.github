@@ -1,0 +1,50 @@
+name: Reusable TypeScript Check
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        type: string
+        default: "lts/*"
+      working-directory:
+        description: "Directory to run commands in"
+        type: string
+        default: "."
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tsc-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tsc:
+    name: TypeScript
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+          cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Register TypeScript problem matcher
+        uses: Delemangi/.github/.github/actions/problem-matchers@main
+        with:
+          tool: tsc
+
+      - name: TypeScript Check
+        run: npx tsc --noEmit --pretty false
