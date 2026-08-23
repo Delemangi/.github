@@ -1,0 +1,42 @@
+name: Reusable Pytest
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        description: "Directory to run Pytest in"
+        type: string
+        default: "."
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pytest-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pytest:
+    name: Pytest
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install
+
+      - name: Run Pytest
+        run: |
+          uv sync --frozen --dev
+          uv run pytest
