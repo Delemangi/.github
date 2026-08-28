@@ -1,0 +1,53 @@
+name: Reusable Test and Build
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        type: string
+        default: "lts/*"
+      working-directory:
+        description: "Directory to run commands in"
+        type: string
+        default: "."
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-build:
+    name: Test and Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+          cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+
+      - name: Install Dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Audit Dependencies
+        run: npm audit --audit-level=low
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
