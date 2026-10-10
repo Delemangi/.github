@@ -1,0 +1,123 @@
+name: Reusable Playwright
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        type: string
+        default: "24"
+      working-directory:
+        description: "Directory to run commands in"
+        type: string
+        default: "."
+      install-command:
+        description: "Command used to install project dependencies"
+        type: string
+        default: "npm ci"
+      build-command:
+        description: "Command used to build the project; empty skips the build"
+        type: string
+        default: "npm run build"
+      playwright-install-command:
+        description: "Command used to install Playwright browsers; empty skips browser installation"
+        type: string
+        default: "npx playwright install --with-deps chromium"
+      test-command:
+        description: "Command used to run Playwright tests"
+        type: string
+        default: "npx playwright test"
+      artifact-name:
+        description: "Name of the uploaded failure artifact"
+        type: string
+        default: "playwright-failure"
+      artifact-path:
+        description: "Newline-separated paths to upload on failure"
+        type: string
+        default: |-
+          playwright-report/
+          test-results/
+      artifact-retention-days:
+        description: "Number of days to retain failure artifacts"
+        type: number
+        default: 7
+
+permissions:
+  contents: read
+
+concurrency:
+  group: playwright-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  playwright:
+    name: Playwright
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+          cache-dependency-path: ${{ format('{0}/package-lock.json', inputs.working-directory) }}
+
+      - name: Install Dependencies
+        if: ${{ inputs.install-command != '' }}
+        run: ${{ inputs.install-command }}
+
+      - name: Install Playwright browsers
+        if: ${{ inputs.playwright-install-command != '' }}
+        run: ${{ inputs.playwright-install-command }}
+
+      - name: Build
+        if: ${{ inputs.build-command != '' }}
+        run: ${{ inputs.build-command }}
+
+      - name: Run Playwright tests
+        run: ${{ inputs.test-command }}
+
+      - name: Resolve artifact paths
+        id: artifact-paths
+        if: ${{ failure() && inputs.artifact-path != '' }}
+        env:
+          ARTIFACT_PATHS: ${{ inputs.artifact-path }}
+          WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        shell: bash
+        run: |
+          if [[ "$WORKING_DIRECTORY" == "." ]]; then
+            prefix=""
+          else
+            prefix="${WORKING_DIRECTORY%/}/"
+          fi
+
+          paths=""
+          while IFS= read -r path || [[ -n "$path" ]]; do
+            [[ -z "$path" ]] && continue
+            [[ -n "$paths" ]] && paths+=$'\n'
+            paths+="${prefix}${path}"
+          done <<< "$ARTIFACT_PATHS"
+
+          delimiter="artifact-paths-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
+          {
+            printf 'paths<<%s\n' "$delimiter"
+            printf '%s\n' "$paths"
+            printf '%s\n' "$delimiter"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upload Playwright failure artifacts
+        if: ${{ failure() && inputs.artifact-path != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: ${{ steps.artifact-paths.outputs.paths }}
+          retention-days: ${{ inputs.artifact-retention-days }}
+          if-no-files-found: ignore
